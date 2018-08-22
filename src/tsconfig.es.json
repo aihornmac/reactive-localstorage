@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../es",
+    "module": "esnext",
+    "target": "esnext",
+    "downlevelIteration": false,
+  }
+}
