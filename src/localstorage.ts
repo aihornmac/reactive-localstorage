@@ -1,10 +1,13 @@
 export class LocalStorage implements Storage {
   readonly supported: boolean
+  readonly native: Storage
 
-  protected storage: Storage
   protected _events: {
     [P in keyof ReactiveLocalStorageEventMap]?: Set<ReactiveLocalStorageEventMap[P]>
   } = {}
+  protected _cache: Map<string, string | null>
+  protected _length = 0
+  protected _injected = false
 
   constructor(window?: Window, storage?: Storage) {
     if (window) {
@@ -13,37 +16,45 @@ export class LocalStorage implements Storage {
       this.supported = false
       window = new Window()
     }
-    this.storage = storage || window.localStorage
-    listen(window, ({ key, newValue }) => {
+    this.native = storage || window.localStorage
+    this._cache = new Map()
+    this.inject(window, this.native)
+    listen(window, ({ key, newValue, oldValue }) => {
       if (!key) return
-      this.feed(key, newValue)
+      this.feed(key, newValue, oldValue)
     })
   }
 
   get length() {
-    return this.storage.length
+    return this.native.length
   }
 
   key(index: number) {
-    return this.storage.key(index)
+    return this.native.key(index)
   }
 
   getItem(key: string) {
-    return this.storage.getItem(key)
+    const cache = this._cache
+    if (cache.has(key)) return cache.get(key)!
+    const value = this.native.getItem(key)
+    cache.set(key, value)
+    return value
   }
 
   setItem(key: string, value: string) {
-    this.storage.setItem(key, value)
-    this.emit('change', key, value)
+    return this.set(key, value)
   }
 
   removeItem(key: string) {
-    this.storage.removeItem(key)
-    this.emit('change', key, null)
+    return this.set(key, null)
   }
 
   clear() {
-    this.storage.clear()
+    this.native.clear()
+    const cache = this._cache
+    for (const key of cache.keys()) {
+      cache.set(key, null)
+    }
   }
 
   on<K extends keyof ReactiveLocalStorageEventMap>(name: K, fn: ReactiveLocalStorageEventMap[K]) {
@@ -61,8 +72,21 @@ export class LocalStorage implements Storage {
     }
   }
 
-  feed(key: string, newValue: string | null) {
-    this.emit('change', key, newValue)
+  feed(key: string, newValue: string | null, oldValue: string | null) {
+    this._cache.set(key, newValue)
+    this.emit('change', key, newValue, oldValue)
+  }
+
+  protected set(key: string, value: string | null) {
+    const cache = this._cache
+    const oldValue = cache.has(key) ? cache.get(key)! : this.native.getItem(key)
+    if (typeof value === 'string') {
+      this.native.setItem(key, value)
+    } else {
+      this.native.removeItem(key)
+    }
+    cache.set(key, value)
+    this.emit('change', key, value, oldValue)
   }
 
   protected emit<K extends keyof ReactiveLocalStorageEventMap>(
@@ -76,10 +100,79 @@ export class LocalStorage implements Storage {
       }
     }
   }
+
+  protected inject(target: Window, storage: Storage) {
+    const me = this
+    const cache = this._cache
+    const injected = Object.create(storage)
+    Object.defineProperties(injected, {
+      getItem: {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value(this: Storage, key: string) {
+          const value = storage.getItem(key)
+          cache.set(key, value)
+        },
+      },
+      setItem: {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value(this: Storage, key: string, value: any) {
+          set(key, String(value))
+        },
+      },
+      removeItem: {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value(this: Storage, key: string) {
+          set(key, null)
+        },
+      }
+    })
+
+    Object.defineProperty(target, 'localStorage', {
+      ...Object.getOwnPropertyDescriptor(window, 'localStorage'),
+      get: () => injected,
+    })
+
+    this._injected = true
+
+    function set(key: string, newValue: string | null) {
+      let oldValue: string | null
+      let error: any
+      let hasError = false
+      try {
+        oldValue = me.getItem(key)
+      } catch (e) {
+        hasError = true
+        error = e
+      }
+      if (newValue === null) {
+        storage.removeItem(key)
+      } else {
+        storage.setItem(key, newValue)
+      }
+      if (hasError) {
+        // tslint:disable-next-line no-console
+        console.error(error)
+        return
+      }
+      try {
+        cache.set(key, newValue)
+        me.feed(key, newValue, oldValue!)
+      } catch (e) {
+        // tslint:disable-next-line no-console
+        console.error(e)
+      }
+    }
+  }
 }
 
 export interface ReactiveLocalStorageEventMap {
-  change(key: string, newValue: string | null): any
+  change(key: string, newValue: string | null, oldValue: string | null): any
 }
 
 export function listen(target: Window, cb: (this: Window, ev: WindowEventMap['storage']) => any) {

@@ -10,6 +10,7 @@ npm i -S reactive-localstorage
 ```
 
 #### Features
+* inject window.localStorage
 * Emit changes from same window
 * Emit external changes
 
@@ -28,23 +29,20 @@ localStorage.setItem('foo', 'bar');
 // print key foo changed to bar
 ```
 
-You can also trigger changes manually, especially when you have other sources that manage localStorage.
+It also works with window.localStorage
 
 ```js
-localStorage.feed('foo', 'alice');
+window.localStorage.setItem('foo', 'alice');
 
 // print key foo changed to alice
 ```
 
-You can also use injection to override `window.localStorage`
+You can also trigger changes manually, especially when you have other sources that manage localStorage.
 
 ```js
-import 'reactive-localstorage/lib/inject';
-import localStorage from 'reactive-localstorage';
+localStorage.feed('foo', 'bob');
 
-console.log(window.localStorage === localStorage);
-
-// print true
+// print key foo changed to bob
 ```
 
 #### Related Projects
