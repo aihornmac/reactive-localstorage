@@ -39,3 +39,5 @@ jspm_packages
 # npm publish directory
 lib
 es
+
+.vscode

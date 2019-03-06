@@ -1,3 +1,5 @@
+import { version } from './env'
+
 const $injectMark = Symbol.for('reactive-localstorage-inject-mark')
 const $handlers = Symbol.for('reactive-localstorage-handlers')
 
@@ -14,6 +16,7 @@ export class LocalStorage implements Storage {
   protected _length = 0
 
   constructor(window?: Window, storage?: Storage) {
+    // istanbul ignore next
     if (window) {
       this.supported = true
     } else {
@@ -29,6 +32,10 @@ export class LocalStorage implements Storage {
     })
   }
 
+  get version() {
+    return version
+  }
+
   get length() {
     return this.native.length
   }
@@ -40,7 +47,7 @@ export class LocalStorage implements Storage {
   getItem(key: string) {
     const cache = this._cache
     if (cache.has(key)) return cache.get(key)!
-    const value = call(getItem, this.native, key)
+    const value = getItem.call(this.native, key)
     cache.set(key, value)
     return value
   }
@@ -78,16 +85,23 @@ export class LocalStorage implements Storage {
 
   feed(key: string, newValue: string | null, oldValue: string | null) {
     this._cache.set(key, newValue)
-    this.emit('change', key, newValue, oldValue)
+    if (newValue !== oldValue) {
+      try {
+        this.emit('change', key, newValue, oldValue)
+      } catch (e) {
+        // tslint:disable-next-line no-console
+        console.error(e)
+      }
+    }
   }
 
   protected set(key: string, value: string | null) {
     const cache = this._cache
     const oldValue = cache.has(key) ? cache.get(key)! : this.native.getItem(key)
     if (typeof value === 'string') {
-      call(setItem, this.native, key, value)
+      setItem.call(this.native, key, value)
     } else {
-      call(removeItem, this.native, key)
+      removeItem.call(this.native, key)
     }
     cache.set(key, value)
     this.emit('change', key, value, oldValue)
@@ -95,7 +109,7 @@ export class LocalStorage implements Storage {
 
   protected emit<K extends keyof ReactiveLocalStorageEventMap>(
     name: K,
-    ...args: ReactiveLocalStorageEventMap[K] extends (...args: infer T) => any ? T : any[]
+    ...args: ArgumentsType<ReactiveLocalStorageEventMap[K]>
   ) {
     const set = this._events[name]
     if (set) {
@@ -108,87 +122,83 @@ export class LocalStorage implements Storage {
   protected inject(storage: Storage) {
     const me = this
     const cache = this._cache
-    storage[$handlers] = {
-      getItem(this: Storage, key: string) {
+    const handlers = storage[$handlers] || (storage[$handlers] = [])
+    handlers.push({
+      injector: this,
+      getItem(this, key) {
         const value = getItem.call(this, key)
         cache.set(key, value)
       },
-      setItem(this: Storage, key: string, value: any) {
-        call(set, this, key, String(value))
+      setItem(this, key, value) {
+        set.call(this, key, String(value))
       },
-      removeItem(this: Storage, key: string) {
-        call(set, this, key, null)
+      removeItem(this, key) {
+        set.call(this, key, null)
       },
-    }
+    })
 
     function set(this: Storage, key: string, newValue: string | null) {
-      let oldValue: string | null = null
-      let error: any
-      let hasError = false
-      try {
-        oldValue = me.getItem(key)
-      } catch (e) {
-        hasError = true
-        error = e
-      }
+      const oldValue = me.getItem(key)
       if (newValue === null) {
         removeItem.call(this, key)
       } else {
         setItem.call(this, key, newValue)
       }
-      if (hasError) {
-        // tslint:disable-next-line no-console
-        console.error(error)
-        return
-      }
-      try {
-        cache.set(key, newValue)
-        if (newValue !== oldValue) {
-          me.feed(key, newValue, oldValue)
-        }
-      } catch (e) {
-        // tslint:disable-next-line no-console
-        console.error(e)
-      }
+      me.feed(key, newValue, oldValue)
     }
   }
 }
 
 export interface ReactiveLocalStorageEventMap {
-  change(key: string, newValue: string | null, oldValue: string | null): any
+  change(key: string, newValue: string | null, oldValue: string | null): void
 }
 
-export function listen(target: Window, cb: (this: Window, ev: WindowEventMap['storage']) => any) {
+function listen(target: Window, cb: (this: Window, ev: WindowEventMap['storage']) => any) {
   if (target.addEventListener) {
     target.addEventListener('storage', cb, true)
+    // istanbul ignore next
   } else if (target.attachEvent) {
     target.attachEvent('storage', cb)
+    // istanbul ignore next
   } else {
     return false
   }
   return true
 }
 
-function call<T, U extends any[], R>(fn: (this: T, ...args: U) => R, me: T, ...args: U): R {
-  return fn.apply(me, args)
-}
-
 inject()
 
 function inject() {
+  // istanbul ignore next
   if (Storage.prototype[$injectMark]) {
     console.warn(`Storage has been injected, there might be multi versions of reactive-localstorage`)
     return
   }
   Object.defineProperties(Storage.prototype, {
+    [$injectMark]: {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: true,
+    },
+    [$handlers]: {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: [],
+    },
     getItem: {
       configurable: true,
       enumerable: false,
       writable: true,
       value(this: Storage, key: string) {
         const handlers = this[$handlers]
-        if (handlers && typeof handlers.getItem === 'function') {
-          return handlers.getItem.call(this, key)
+        if (handlers) {
+          for (const { getItem: fn } of handlers) {
+            if (typeof fn === 'function') {
+              fn.call(this, key)
+            }
+          }
         }
         return getItem.call(this, key)
       },
@@ -197,10 +207,14 @@ function inject() {
       configurable: true,
       enumerable: false,
       writable: true,
-      value(this: Storage, key: string, value: any) {
+      value(this: Storage, key: string, value: string) {
         const handlers = this[$handlers]
-        if (handlers && typeof handlers.setItem === 'function') {
-          return handlers.setItem.call(this, key, value)
+        if (handlers) {
+          for (const { setItem: fn } of handlers) {
+            if (typeof fn === 'function') {
+              fn.call(this, key, value)
+            }
+          }
         }
         return setItem.call(this, key, value)
       },
@@ -211,11 +225,60 @@ function inject() {
       writable: true,
       value(this: Storage, key: string) {
         const handlers = this[$handlers]
-        if (handlers && typeof handlers.setItem === 'function') {
-          return handlers.removeItem.call(this, key)
+        if (handlers) {
+          for (const { removeItem: fn } of handlers) {
+            if (typeof fn === 'function') {
+              fn.call(this, key)
+            }
+          }
         }
         return removeItem.call(this, key)
       },
     }
   })
 }
+
+interface Handler {
+  injector: LocalStorage
+  getItem?(this: Storage, key: string): void
+  setItem?(this: Storage, key: string, value: unknown): void
+  removeItem?(this: Storage, key: string): void
+}
+
+declare var Storage: {
+  prototype: Storage
+  new(): Storage
+}
+
+interface Storage {
+  [$injectMark]?: boolean
+  [$handlers]?: Handler[]
+  /**
+   * Returns the number of key/value pairs currently present in the list associated with the
+   * object.
+   */
+  readonly length: number
+  /**
+   * Empties the list associated with the object of all key/value pairs, if there are any.
+   */
+  clear(): void
+  /**
+   * value = storage[key]
+   */
+  getItem(key: string): string | null
+  /**
+   * Returns the name of the nth key in the list, or null if n is greater
+   * than or equal to the number of key/value pairs in the object.
+   */
+  key(index: number): string | null
+  /**
+   * delete storage[key]
+   */
+  removeItem(key: string): void
+  /**
+   * storage[key] = value
+   */
+  setItem(key: string, value: string): void
+}
+
+type ArgumentsType<T> = T extends (...args: infer A) => any ? A : []

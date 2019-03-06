@@ -12,4 +12,7 @@ if (process.env.NODE_ENV !== 'production') {
   }
 }
 
+export * from './localstorage'
+export * from './env'
+
 export default localstorage
