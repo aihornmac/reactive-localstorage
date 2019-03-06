@@ -93,6 +93,7 @@ describe('reactive-localstorage', () => {
     ls.clear()
     expect(ls.length).to.equal(0)
     expect(localStorage.length).to.equal(0)
+    expect(localStorage.getItem(KEY)).equal(null)
   })
 
   it('key', () => {
