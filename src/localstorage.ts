@@ -12,6 +12,7 @@ export class LocalStorage implements Storage {
   } = {}
   protected _cache: Map<string, string | null>
   protected _length = 0
+  protected _injected = false
 
   constructor(window?: Window, storage?: Storage) {
     // istanbul ignore next
@@ -23,7 +24,6 @@ export class LocalStorage implements Storage {
     }
     this.native = storage || window.localStorage
     this._cache = new Map()
-    this.inject(this.native)
     listen(window, ({ key, newValue, oldValue }) => {
       this.feed(key, newValue, oldValue)
     })
@@ -42,6 +42,7 @@ export class LocalStorage implements Storage {
   }
 
   getItem(key: string) {
+    this.inject()
     const cache = this._cache
     if (cache.has(key)) return cache.get(key)!
     const value = getNative('getItem').call(this.native, key)
@@ -63,9 +64,11 @@ export class LocalStorage implements Storage {
     for (const key of cache.keys()) {
       cache.set(key, null)
     }
+    this.emit('change', null, null, null)
   }
 
   on<K extends keyof ReactiveLocalStorageEventMap>(name: K, fn: ReactiveLocalStorageEventMap[K]) {
+    this.inject()
     let set = this._events[name]
     if (!set) {
       this._events[name] = set = new Set()
@@ -126,17 +129,20 @@ export class LocalStorage implements Storage {
     }
   }
 
-  protected inject(storage: Storage) {
+  protected inject() {
+    if (this._injected) return
+    this._injected = true
+    const storage = this.native
     const me = this
     const cache = this._cache
     const handlers = storage[$handlers] || (storage[$handlers] = [])
     handlers.push({
       injector: this,
       getItem(this, key, value) {
-        cache.set(key, String(value))
+        cache.set(key, value)
       },
       setItem(this, key, value) {
-        me.feed(key, String(value), me.getItem(key))
+        me.feed(key, value, me.getItem(key))
       },
       removeItem(this, key) {
         me.feed(key, null, me.getItem(key))
@@ -195,6 +201,7 @@ function inject() {
   injectedGetItem.native = nativeGetItem
 
   function injectedSetItem(this: Storage, key: string, value: string) {
+    value = String(value)
     const handlers = this[$handlers]
     if (handlers) {
       for (const { setItem: fn } of handlers) {
@@ -231,7 +238,7 @@ function inject() {
     }
     return nativeClear.call(this)
   }
-  injectedRemoveItem.native = nativeRemoveItem
+  injectedClear.native = nativeClear
 
   Object.defineProperties(Storage.prototype, {
     [$injectMark]: {

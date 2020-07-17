@@ -7,7 +7,7 @@
   "scripts": {
     "start": "webpack-serve --open --config dev/webpack.config.js",
     "build": "ts-node -T --project tools/tsconfig.json tools/build.ts",
-    "karma": "karma start"
+    "test": "karma start"
   },
   "repository": {
     "type": "git",
@@ -56,7 +56,7 @@
     "ts-node": "^8.0.2",
     "tslint": "^5.13.1",
     "tslint-eslint-rules": "^5.3.1",
-    "typescript": "^3.3.3333",
+    "typescript": "^3.9.7",
     "uuid": "^3.3.2",
     "webpack": "^4.29.6",
     "webpack-serve": "^2.0.3"
