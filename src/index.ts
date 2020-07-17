@@ -4,7 +4,7 @@ const ENV = typeof window !== 'undefined' ? window : (
   typeof global !== 'undefined' ? global : undefined
 ) as Window | undefined
 
-const ls = new LocalStorage(ENV)
+const ls = new LocalStorage(ENV, localStorage)
 const ss = new LocalStorage(ENV, sessionStorage)
 
 if (process.env.NODE_ENV !== 'production') {

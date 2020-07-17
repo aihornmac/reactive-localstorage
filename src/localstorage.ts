@@ -24,7 +24,8 @@ export class LocalStorage implements Storage {
     }
     this.native = storage || window.localStorage
     this._cache = new Map()
-    listen(window, ({ key, newValue, oldValue }) => {
+    listen(window, ({ key, newValue, oldValue, storageArea }) => {
+      if (storageArea !== storage) return
       this.feed(key, newValue, oldValue)
     })
   }
@@ -51,7 +52,7 @@ export class LocalStorage implements Storage {
   }
 
   setItem(key: string, value: string) {
-    return this.set(key, value)
+    return this.set(key, String(value))
   }
 
   removeItem(key: string) {
@@ -190,7 +191,8 @@ function inject() {
     const value = nativeGetItem.call(this, key)
     const handlers = this[$handlers]
     if (handlers) {
-      for (const { getItem: fn } of handlers) {
+      for (const { getItem: fn, injector: { native } } of handlers) {
+        if (this !== native) continue
         if (typeof fn === 'function') {
           fn.call(this, key, value)
         }
@@ -204,7 +206,8 @@ function inject() {
     value = String(value)
     const handlers = this[$handlers]
     if (handlers) {
-      for (const { setItem: fn } of handlers) {
+      for (const { setItem: fn, injector: { native } } of handlers) {
+        if (this !== native) continue
         if (typeof fn === 'function') {
           fn.call(this, key, value)
         }
@@ -217,7 +220,8 @@ function inject() {
   function injectedRemoveItem(this: Storage, key: string) {
     const handlers = this[$handlers]
     if (handlers) {
-      for (const { removeItem: fn } of handlers) {
+      for (const { removeItem: fn, injector: { native } } of handlers) {
+        if (this !== native) continue
         if (typeof fn === 'function') {
           fn.call(this, key)
         }
@@ -230,7 +234,8 @@ function inject() {
   function injectedClear(this: Storage) {
     const handlers = this[$handlers]
     if (handlers) {
-      for (const { clear: fn } of handlers) {
+      for (const { clear: fn, injector: { native } } of handlers) {
+        if (this !== native) continue
         if (typeof fn === 'function') {
           fn.call(this)
         }

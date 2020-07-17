@@ -10,7 +10,7 @@ npm i -S reactive-localstorage
 ```
 
 #### Features
-* inject window.localStorage
+* inject window.localStorage / window.sessionStorage
 * Emit changes from same window
 * Emit external changes
 
@@ -18,7 +18,7 @@ npm i -S reactive-localstorage
 Changes from `reactive-localstorage` or other pages will be emitted as events
 
 ```js
-import localStorage from 'reactive-localstorage';
+import localStorage, { localStorage } from 'reactive-localstorage';
 
 localStorage.on('change', (key, value) => {
   console.log(`key ${key} changed to ${value}`);
@@ -43,6 +43,20 @@ You can also trigger changes manually, especially when you have other sources th
 localStorage.feed('foo', 'bob');
 
 // print key foo changed to bob
+```
+
+SessionStorage is also supported
+
+```js
+import { sessionStorage } from 'reactive-localstorage';
+
+sessionStorage.on('change', (key, value) => {
+  console.log(`key ${key} changed to ${value}`);
+});
+
+sessionStorage.setItem('foo', 'bar');
+
+// print key foo changed to bar
 ```
 
 #### Related Projects
